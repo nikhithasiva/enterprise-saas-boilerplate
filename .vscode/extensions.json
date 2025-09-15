@@ -1,0 +1,16 @@
+{
+    "recommendations": [
+        "ms-python.python",
+        "ms-python.black-formatter",
+        "ms-python.isort",
+        "ms-python.flake8",
+        "humao.rest-client",
+        "mtxr.sqltools",
+        "mtxr.sqltools-driver-pg",
+        "ms-azuretools.vscode-docker",
+        "eamodio.gitlens",
+        "mikestead.dotenv",
+        "redhat.vscode-yaml",
+        "yzhang.markdown-all-in-one"
+    ]
+}
