@@ -70,10 +70,24 @@ async def root():
 
 @app.get("/health")
 async def health_check():
+    from app.core.database import engine
+    
+    # Check database connection
+    db_status = "healthy"
+    try:
+        async with engine.begin() as conn:
+            await conn.execute("SELECT 1")
+    except Exception as e:
+        db_status = "unhealthy"
+        logger.error("Database health check failed", error=str(e))
+    
+    status_code = 200 if db_status == "healthy" else 503
+    
     return JSONResponse(
-        status_code=200,
+        status_code=status_code,
         content={
-            "status": "healthy",
+            "status": "healthy" if db_status == "healthy" else "degraded",
+            "database": db_status,
             "environment": settings.ENVIRONMENT,
             "version": "1.0.0"
         }
