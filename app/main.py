@@ -4,6 +4,7 @@ from fastapi.responses import JSONResponse
 import structlog
 
 from app.core.config import settings
+from app.core.database import init_db, close_db
 
 # Configure structured logging
 structlog.configure(
@@ -46,10 +47,17 @@ app.add_middleware(
 @app.on_event("startup")
 async def startup_event():
     logger.info("Starting Enterprise SaaS Boilerplate", environment=settings.ENVIRONMENT)
+    # Initialize database tables
+    try:
+        await init_db()
+        logger.info("Database initialized successfully")
+    except Exception as e:
+        logger.error("Failed to initialize database", error=str(e))
 
 @app.on_event("shutdown")
 async def shutdown_event():
     logger.info("Shutting down Enterprise SaaS Boilerplate")
+    await close_db()
 
 @app.get("/")
 async def root():
