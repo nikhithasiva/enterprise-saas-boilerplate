@@ -5,6 +5,8 @@ import structlog
 
 from app.core.config import settings
 from app.core.database import init_db, close_db
+from app.core.middleware import RateLimitMiddleware, SecurityHeadersMiddleware
+from app.api.routes import auth, users
 
 # Configure structured logging
 structlog.configure(
@@ -35,6 +37,10 @@ app = FastAPI(
     redoc_url="/redoc" if settings.ENVIRONMENT == "development" else None,
 )
 
+# Security middleware
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(RateLimitMiddleware, calls=100, period=60)  # 100 requests per minute
+
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
@@ -43,6 +49,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Include API routers
+app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
+app.include_router(users.router, prefix="/api/users", tags=["Users"])
 
 @app.on_event("startup")
 async def startup_event():
