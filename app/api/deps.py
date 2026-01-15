@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Tuple
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,6 +7,7 @@ from sqlalchemy import select
 from app.core.database import get_db
 from app.core.security import decode_token
 from app.models.user import User
+from app.models.organization import Organization, OrganizationMember
 from app.schemas.auth import TokenData
 
 security = HTTPBearer()
@@ -92,3 +93,96 @@ async def get_current_superuser(
             detail="Not enough permissions"
         )
     return current_user
+
+
+async def get_organization_member(
+    organization_id: str,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+) -> Tuple[Organization, OrganizationMember]:
+    """
+    Dependency to get organization and verify user membership.
+
+    Returns tuple of (organization, membership).
+    Raises 404 if organization not found or user is not a member.
+    """
+    # Get organization
+    result = await db.execute(
+        select(Organization).where(Organization.id == organization_id)
+    )
+    organization = result.scalar_one_or_none()
+
+    if not organization or not organization.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Organization not found"
+        )
+
+    # Check membership
+    result = await db.execute(
+        select(OrganizationMember)
+        .where(OrganizationMember.organization_id == organization_id)
+        .where(OrganizationMember.user_id == current_user.id)
+    )
+    membership = result.scalar_one_or_none()
+
+    if not membership:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Organization not found or access denied"
+        )
+
+    return organization, membership
+
+
+async def require_organization_role(
+    required_roles: list[str],
+    organization_id: str,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+) -> OrganizationMember:
+    """
+    Dependency to verify user has required role in organization.
+
+    Example: require_organization_role(["owner", "admin"])
+    """
+    result = await db.execute(
+        select(OrganizationMember)
+        .where(OrganizationMember.organization_id == organization_id)
+        .where(OrganizationMember.user_id == current_user.id)
+    )
+    membership = result.scalar_one_or_none()
+
+    if not membership:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Organization not found or access denied"
+        )
+
+    if membership.role not in required_roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Requires one of these roles: {', '.join(required_roles)}"
+        )
+
+    return membership
+
+
+def require_role(allowed_roles: list[str]):
+    """
+    Factory function to create role-checking dependency.
+
+    Usage:
+    @router.get("/endpoint", dependencies=[Depends(require_role(["owner", "admin"]))])
+    """
+    async def check_role(
+        membership: OrganizationMember = Depends(get_organization_member)
+    ):
+        if membership.role not in allowed_roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Requires one of these roles: {', '.join(allowed_roles)}"
+            )
+        return membership
+
+    return check_role

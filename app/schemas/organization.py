@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Optional, List
 from datetime import datetime
 from uuid import UUID
@@ -21,6 +21,8 @@ class OrganizationUpdate(BaseModel):
 
 
 class OrganizationMemberResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     user_id: UUID
     organization_id: UUID
@@ -28,18 +30,14 @@ class OrganizationMemberResponse(BaseModel):
     joined_at: datetime
     user: Optional[UserInDB] = None
 
-    class Config:
-        from_attributes = True
-
 
 class OrganizationResponse(OrganizationBase):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     owner_id: UUID
-    stripe_customer_id: Optional[str]
+    stripe_customer_id: Optional[str] = None
     is_active: bool
     created_at: datetime
     updated_at: datetime
-    members: Optional[List[OrganizationMemberResponse]] = []
-
-    class Config:
-        from_attributes = True
+    members: Optional[List[OrganizationMemberResponse]] = None

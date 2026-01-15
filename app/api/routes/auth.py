@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import structlog
+import re
 
 from app.core.database import get_db
 from app.core.security import (
@@ -13,11 +14,20 @@ from app.core.security import (
     verify_password
 )
 from app.models.user import User
+from app.models.organization import Organization, OrganizationMember
 from app.schemas.auth import UserLogin, UserRegister, Token, UserResponse
 from app.core.config import settings
 
 router = APIRouter()
 logger = structlog.get_logger()
+
+
+def generate_slug(name: str) -> str:
+    """Generate a URL-safe slug from organization name"""
+    slug = name.lower()
+    slug = re.sub(r'[^a-z0-9]+', '-', slug)
+    slug = slug.strip('-')
+    return slug
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
@@ -55,6 +65,46 @@ async def register(
     )
 
     db.add(new_user)
+    await db.flush()  # Flush to get user ID
+
+    # Create organization if organization_name provided
+    if user_data.organization_name:
+        slug = generate_slug(user_data.organization_name)
+
+        # Check if slug is available
+        result = await db.execute(select(Organization).where(Organization.slug == slug))
+        existing_org = result.scalar_one_or_none()
+
+        if existing_org:
+            # Append user id to slug to make it unique
+            slug = f"{slug}-{str(new_user.id)[:8]}"
+
+        new_org = Organization(
+            name=user_data.organization_name,
+            slug=slug,
+            owner_id=new_user.id,
+            is_active=True
+        )
+
+        db.add(new_org)
+        await db.flush()
+
+        # Add user as owner member
+        owner_member = OrganizationMember(
+            organization_id=new_org.id,
+            user_id=new_user.id,
+            role="owner"
+        )
+
+        db.add(owner_member)
+
+        logger.info(
+            "Organization created during registration",
+            org_id=str(new_org.id),
+            org_name=new_org.name,
+            user_id=str(new_user.id)
+        )
+
     await db.commit()
     await db.refresh(new_user)
 

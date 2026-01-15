@@ -6,7 +6,7 @@ import structlog
 from app.core.config import settings
 from app.core.database import init_db, close_db
 from app.core.middleware import RateLimitMiddleware, SecurityHeadersMiddleware
-from app.api.routes import auth, users
+from app.api.routes import auth, users, organizations
 
 # Configure structured logging
 structlog.configure(
@@ -53,6 +53,7 @@ app.add_middleware(
 # Include API routers
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
 app.include_router(users.router, prefix="/api/users", tags=["Users"])
+app.include_router(organizations.router, prefix="/api/organizations", tags=["Organizations"])
 
 @app.on_event("startup")
 async def startup_event():

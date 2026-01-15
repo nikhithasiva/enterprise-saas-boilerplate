@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, ConfigDict
 from typing import Optional
 from datetime import datetime
 from uuid import UUID
@@ -20,6 +20,8 @@ class UserUpdate(BaseModel):
 
 
 class UserInDB(UserBase):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     is_active: bool
     is_verified: bool
@@ -27,6 +29,3 @@ class UserInDB(UserBase):
     created_at: datetime
     updated_at: datetime
     last_login: Optional[datetime]
-
-    class Config:
-        from_attributes = True
