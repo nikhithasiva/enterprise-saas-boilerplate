@@ -1,12 +1,13 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from datetime import datetime
 import structlog
 
 from app.core.config import settings
 from app.core.database import init_db, close_db
 from app.core.middleware import RateLimitMiddleware, SecurityHeadersMiddleware
-from app.api.routes import auth, users, organizations
+from app.api.routes import auth, users, organizations, plans, subscriptions, webhooks, admin, usage
 
 # Configure structured logging
 structlog.configure(
@@ -54,6 +55,11 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
 app.include_router(users.router, prefix="/api/users", tags=["Users"])
 app.include_router(organizations.router, prefix="/api/organizations", tags=["Organizations"])
+app.include_router(plans.router, prefix="/api/plans", tags=["Plans"])
+app.include_router(subscriptions.router, prefix="/api/subscriptions", tags=["Subscriptions"])
+app.include_router(webhooks.router, prefix="/api/webhooks", tags=["Webhooks"])
+app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
+app.include_router(usage.router, prefix="/api/usage", tags=["Usage"])
 
 @app.on_event("startup")
 async def startup_event():
@@ -83,7 +89,8 @@ async def root():
 async def health_check():
     from sqlalchemy import text
     from app.core.database import engine
-    
+    import stripe
+
     # Check database connection
     db_status = "healthy"
     try:
@@ -92,15 +99,64 @@ async def health_check():
     except Exception as e:
         db_status = "unhealthy"
         logger.error("Database health check failed", error=str(e))
-    
-    status_code = 200 if db_status == "healthy" else 503
-    
+
+    # Check Stripe connection
+    stripe_status = "healthy"
+    try:
+        if settings.STRIPE_SECRET_KEY:
+            # Just verify API key is configured, don't make actual API call
+            stripe_status = "configured"
+        else:
+            stripe_status = "not_configured"
+    except Exception as e:
+        stripe_status = "unhealthy"
+        logger.error("Stripe health check failed", error=str(e))
+
+    overall_healthy = db_status == "healthy"
+    status_code = 200 if overall_healthy else 503
+
     return JSONResponse(
         status_code=status_code,
         content={
-            "status": "healthy" if db_status == "healthy" else "degraded",
+            "status": "healthy" if overall_healthy else "degraded",
             "database": db_status,
+            "stripe": stripe_status,
             "environment": settings.ENVIRONMENT,
             "version": "1.0.0"
         }
     )
+
+
+@app.get("/metrics")
+async def metrics():
+    """
+    Basic metrics endpoint for monitoring.
+    Returns simple metrics that can be scraped by monitoring systems.
+    """
+    from sqlalchemy import text
+    from app.core.database import engine
+
+    try:
+        async with engine.begin() as conn:
+            # Get basic counts
+            result = await conn.execute(text("SELECT COUNT(*) FROM users"))
+            user_count = result.scalar()
+
+            result = await conn.execute(text("SELECT COUNT(*) FROM organizations"))
+            org_count = result.scalar()
+
+            result = await conn.execute(text("SELECT COUNT(*) FROM subscriptions WHERE status IN ('active', 'trialing')"))
+            active_sub_count = result.scalar()
+
+        return {
+            "users_total": user_count,
+            "organizations_total": org_count,
+            "subscriptions_active": active_sub_count,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        logger.error("Metrics collection failed", error=str(e))
+        return JSONResponse(
+            status_code=503,
+            content={"error": "Failed to collect metrics"}
+        )

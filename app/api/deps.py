@@ -9,6 +9,7 @@ from app.core.security import decode_token
 from app.models.user import User
 from app.models.organization import Organization, OrganizationMember
 from app.schemas.auth import TokenData
+from app.services.usage_service import UsageService
 
 security = HTTPBearer()
 
@@ -186,3 +187,47 @@ def require_role(allowed_roles: list[str]):
         return membership
 
     return check_role
+
+
+async def check_user_limit_dependency(
+    organization_id: str,
+    db: AsyncSession = Depends(get_db)
+) -> None:
+    """
+    Dependency to check if organization can add more users.
+
+    Raises HTTPException if limit is reached.
+
+    Usage:
+    @router.post("/invite", dependencies=[Depends(check_user_limit_dependency)])
+    """
+    from uuid import UUID
+    can_add, reason = await UsageService.can_add_user(UUID(organization_id), db)
+
+    if not can_add:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=reason
+        )
+
+
+async def check_project_limit_dependency(
+    organization_id: str,
+    db: AsyncSession = Depends(get_db)
+) -> None:
+    """
+    Dependency to check if organization can add more projects.
+
+    Raises HTTPException if limit is reached.
+
+    Usage:
+    @router.post("/projects", dependencies=[Depends(check_project_limit_dependency)])
+    """
+    from uuid import UUID
+    can_add, reason = await UsageService.can_add_project(UUID(organization_id), db)
+
+    if not can_add:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=reason
+        )

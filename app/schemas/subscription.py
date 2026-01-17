@@ -13,6 +13,23 @@ class PlanBase(BaseModel):
     interval: str
     max_users: Optional[int] = None
     max_projects: Optional[int] = None
+    features: Optional[str] = None
+
+
+class PlanCreate(PlanBase):
+    """Schema for creating a new plan"""
+    pass
+
+
+class PlanUpdate(BaseModel):
+    """Schema for updating an existing plan"""
+    name: Optional[str] = None
+    description: Optional[str] = None
+    price_amount: Optional[int] = None
+    max_users: Optional[int] = None
+    max_projects: Optional[int] = None
+    features: Optional[str] = None
+    is_active: Optional[bool] = None
 
 
 class PlanResponse(PlanBase):
@@ -32,7 +49,20 @@ class SubscriptionBase(BaseModel):
 
 
 class SubscriptionCreate(SubscriptionBase):
-    pass
+    """Schema for creating a new subscription"""
+    organization_id: UUID
+    trial_period_days: Optional[int] = None
+
+
+class SubscriptionUpdate(BaseModel):
+    """Schema for updating an existing subscription"""
+    plan_id: Optional[UUID] = None
+    cancel_at_period_end: Optional[bool] = None
+
+
+class SubscriptionCancel(BaseModel):
+    """Schema for cancelling a subscription"""
+    immediately: bool = False
 
 
 class SubscriptionResponse(SubscriptionBase):
